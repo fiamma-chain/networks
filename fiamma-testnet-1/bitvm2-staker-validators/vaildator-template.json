@@ -1,9 +1,9 @@
 {
-    "validatorName": "[Your Validator Name]",
-    "fiammaAddress": "[Your Fiamma Address for receiving testnet tokens]",
-    "fiammaValidatorAddress": "[Your Fiamma Validator Address start with fiammavaloperxxxx]",
-    "btcAddress": "[Your BTC Address for staking]",
-    "website": "[Your Website]",
-    "contactEmail": "[Your Contact Email]",
-    "description": "[Your Description]"
+    "validatorName": "LAOCHO",
+    "fiammaAddress": "fiamma1x5kumkfcsgwzy9pszd5d5q0egmq7k0c5vwdpnp",
+    "fiammaValidatorAddress": "fiammavaloper1x5kumkfcsgwzy9pszd5d5q0egmq7k0c5rsajqx",
+    "btcAddress": "bc1qp7gegwd2l88rdmxtnx3y24y2yvfjs7dw8udah0",
+    "website": "https://github.com/tonytruong2009",
+    "contactEmail": "nguuyenphat01012021@gmail.com",
+    "description": "Discord name: huynhsang0101"
 }
