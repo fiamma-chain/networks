@@ -1,13 +1,13 @@
    ## Validator Information Submission
 
    ### Validator Details
-   - Validator Name: [Your Validator Name]
-   - Fiamma Address: [Your Fiamma Address for receiving testnet tokens]
-   - Fiamma Validator Address: [Your Fiamma Validator Address start with fiammavaloperxxxx]
-   - BTC Address: [Your BTC Address for staking]
-   - Website: [Your Website]
-   - Description: [Your Description]
-   - Contact Email: [Your Contact Email]
+   - Validator Name: NodeSafe
+   - Fiamma Address: fiamma1cdq5dfzqlmmqmqnpq9n03c62pqsjcl90n76djr
+   - Fiamma Validator Address: fiammavaloper1cdq5dfzqlmmqmqnpq9n03c62pqsjcl90uq27py
+   - BTC Address: tb1p6tjtmgtngunvh04wrsqq5s0wyfsxtd4zt3g3xaky7t5v4vk0c0cqzn4vu4
+   - Website: https://x.com/CryptoGemFunds
+   - Description: Trusted Validator & Interchain Utility Provider
+   - Contact Email: cryptogemfunds@gmail.com
 
    ### Checklist
    - [ ] I have read and understood all instructions in the README.md
