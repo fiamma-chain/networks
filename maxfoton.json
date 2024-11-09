@@ -1,0 +1,19 @@
+{
+    "validatorName": "Max Foton nodes",
+    "fiammaAddress": "fiamma1nmumlh5pxnj4h8g6eljxn4fx7d6eu2syu4t2fg",
+    "fiammaValidatorAddress": "fiammavaloper1nmumlh5pxnj4h8g6eljxn4fx7d6eu2syntme60",
+    "btcAddress": "tb1qnmumlh5pxnj4h8g6eljxn4fx7d6eu2sy0ml2pm",
+    "website": "https://maxfoton.tech",
+    "contactEmail": "djmaxfoton@gmail.com",
+    "description": "You are welcome"
+}
+
+Checklist
+ I have read and understood all instructions in the README.md
+ I have created a new .json file in the validators directory
+ My file is named <validator-name>.json
+ I have filled in all required information completely
+ I have the required amount of SBTC(signet) for the committee program
+ I understand and agree to the rules and terms of the Fiamma network
+Declaration
+I confirm that all information I have provided is accurate and truthful. I understand that providing false information may result in the disqualification of my validator status.
