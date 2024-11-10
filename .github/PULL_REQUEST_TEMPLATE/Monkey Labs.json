@@ -8,3 +8,26 @@
     "contactEmail": "ifireup@me.com",
     "description": "I love blockchain ❤️"
 }
+
+Validator Details
+
+    Validator Name: Monkey Labs
+    Fiamma Address: fiamma1x7nw7vj33t9qxyrdns4q3arpnf3fnsf5mah47q
+    Fiamma Validator Address: fiammavaloper1p426ynj2lxh6vxkfpjnj4kskxcty66g8nvdd45
+    BTC Address: tb1pq3284tnd3fls52dqvksmtfsnxmx8mjxa8uxuej3t860sh5pmtt2sstljfa
+    Website: https://explorer.nodestake.org/
+    Description: Trusted Validator 
+    Contact Email: ifireup@me.com
+Checklist
+
+I have read and understood all instructions in the README.md
+I have created a new .json file in the validators directory
+My file is named <validator-name>.json
+I have filled in all required information completely
+I have the required amount of SBTC(signet) for the committee program
+
+    I understand and agree to the rules and terms of the Fiamma network
+
+Declaration
+
+I confirm that all information I have provided is accurate and truthful. I understand that providing false information may result in the disqualification of my validator status.
