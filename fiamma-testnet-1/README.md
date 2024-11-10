@@ -2,14 +2,14 @@
 
 ## Fiamma Version
 
-Version [v0.1.3](https://github.com/fiamma-chain/fiamma/tree/v0.1.3)
+Version [v1.0.0](https://github.com/fiamma-chain/fiamma/tree/v1.0.0)
 
 ## Seed Nodes
 
 ### Fiamma Foundation
 
-* 5d6828849a45cf027e035593d8790bc62aca9cef@18.182.20.173:26656
-* 526d13f3ce3e0b56fa3ac26a48f231e559d4d60c@35.73.202.182:26656
+* 348c6ded992c44af63f6ffa564f33ecd40fbe587@18.182.20.173:26656
+* 5aa6e9894f17f741f602c6fe83e74e2640a5cf3a@35.73.202.182:26656
 
 ## RPC Nodes
 
