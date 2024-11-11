@@ -1,0 +1,9 @@
+{
+    "validatorName": "NodeStake",
+    "fiammaAddress": "fiamma1etx55kw7tkmnjqz0k0mups4ewxlr324t68yhft",
+    "fiammaValidatorAddress": "fiammavaloper1etx55kw7tkmnjqz0k0mups4ewxlr324t4e5y6v",
+    "btcAddress": "tb1qpdreez2ry5339tt0py5mh49d2ftt49aftc67yp",
+    "website": "https://nodestake.org",
+    "contactEmail": "info@nodestake.org",
+    "description": "NodeStake is the professional validator, infrastructure provider and IBC relayer."
+}
