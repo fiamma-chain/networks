@@ -1,3 +1,4 @@
+
 name: Check Signet BTC Balance
 
 on:
@@ -68,6 +69,7 @@ jobs:
             );
 
             console.log(`Found ${validatorFiles.length} validator files to process`);
+
 
             for (const file of validatorFiles) {
               console.log(`\nProcessing file: ${file.filename}`);
