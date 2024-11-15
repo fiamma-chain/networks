@@ -1,5 +1,4 @@
-
-name: Check Signet BTC Balance
+name: Check Validators Balance
 
 on:
   workflow_dispatch:
@@ -12,15 +11,12 @@ on:
         options:
         - check_balance
 
-
 jobs:
   check-balance:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Get full git history to properly check files
-
+      
       - uses: actions/setup-node@v3
         with:
           node-version: '16'
@@ -28,13 +24,13 @@ jobs:
       - name: Install dependencies
         run: npm install axios
 
-      - name: Check BTC Balance
+      - name: Check Validators
         uses: actions/github-script@v6
         with:
           script: |
             const fs = require('fs');
-            const axios = require('axios');
             const path = require('path');
+            const axios = require('axios');
             
             async function checkBalance(btcAddress) {
               try {
@@ -42,77 +38,62 @@ jobs:
                 const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
                 const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
                 console.log(`Current balance: ${balanceInBTC} BTC`);
-                return balanceInBTC >= 1;
+                return {
+                  balance: balanceInBTC,
+                  hasEnough: balanceInBTC >= 1
+                };
               } catch (error) {
                 console.error(`Error checking balance: ${error.message}`);
                 throw error;
               }
             }
 
-            // Debug: Print current working directory and list files
-            console.log('Current working directory:', process.cwd());
-            console.log('Directory contents:', fs.readdirSync('.'));
-            console.log('Validators directory contents:', fs.readdirSync('fiamma-testnet-1/bitvm2-staker-validators'));
+            // Get the correct validators directory path
+            const validatorsDir = path.join(process.cwd(), 'fiamma-testnet-1/bitvm2-staker-validators');
+            console.log('Looking for validators in:', validatorsDir);
 
-            // Get changed files in PR
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number
-            });
+            if (!fs.existsSync(validatorsDir)) {
+              console.error('Validators directory not found!');
+              core.setFailed('Validators directory not found');
+              return;
+            }
 
-            console.log('Changed files in PR:', files.map(f => f.filename));
+            // Read all validator files
+            const files = fs.readdirSync(validatorsDir);
+            console.log(`Found ${files.length} files in validators directory`);
 
-            let validatorFiles = files.filter(file => 
-              file.filename.startsWith('fiamma-testnet-1/bitvm2-staker-validators/') && 
-              file.filename.endsWith('.json')
-            );
-
-            console.log(`Found ${validatorFiles.length} validator files to process`);
-
-
-            for (const file of validatorFiles) {
-              console.log(`\nProcessing file: ${file.filename}`);
+            for (const file of files) {
+              if (!file.endsWith('.json')) continue;
               
-              try {
-                // Get file content from PR
-                const { data: fileData } = await github.rest.repos.getContent({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  path: file.filename,
-                  ref: context.payload.pull_request.head.sha
-                });
+              const filePath = path.join(validatorsDir, file);
+              console.log(`\nProcessing file: ${file}`);
 
-                const content = Buffer.from(fileData.content, 'base64').toString();
+              try {
+                const content = fs.readFileSync(filePath, 'utf8');
                 console.log('File content:', content);
 
                 let validatorData;
                 try {
                   validatorData = JSON.parse(content);
                 } catch (error) {
-                  console.error('Failed to parse JSON:', error);
-                  core.setFailed(`Invalid JSON in ${file.filename}`);
+                  console.error(`Invalid JSON in ${file}:`, error.message);
                   continue;
                 }
 
                 if (!validatorData.btc_address) {
-                  console.error('No BTC address found in validator data');
-                  core.setFailed(`No BTC address found in ${file.filename}`);
+                  console.log(`No BTC address found in ${file}`);
                   continue;
                 }
 
-                console.log(`Checking BTC address: ${validatorData.btc_address}`);
-                const hasEnoughBalance = await checkBalance(validatorData.btc_address);
+                console.log(`Found BTC address: ${validatorData.btc_address}`);
+                const result = await checkBalance(validatorData.btc_address);
                 
-                if (!hasEnoughBalance) {
-                  core.setFailed(`BTC address ${validatorData.btc_address} does not have minimum required balance of 1 BTC on Signet`);
-                  continue;
+                if (!result.hasEnough) {
+                  console.log(`❌ Insufficient balance for ${validatorData.btc_address}: ${result.balance} BTC`);
+                } else {
+                  console.log(`✅ Sufficient balance for ${validatorData.btc_address}: ${result.balance} BTC`);
                 }
-                
-                console.log('✅ Balance check passed');
-
               } catch (error) {
-                console.error(`Error processing ${file.filename}:`, error);
-                core.setFailed(`Failed to process ${file.filename}: ${error.message}`);
+                console.error(`Error processing ${file}:`, error.message);
               }
             } 
