@@ -64,7 +64,7 @@ jobs:
             console.log('Changed files in PR:', files.map(f => f.filename));
 
             let validatorFiles = files.filter(file => 
-              file.filename.startsWith('../../fiamma-testnet-1/bitvm2-staker-validators/') && 
+              file.filename.startsWith('fiamma-testnet-1/bitvm2-staker-validators/') && 
               file.filename.endsWith('.json')
             );
 
