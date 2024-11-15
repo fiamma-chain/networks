@@ -1,0 +1,124 @@
+name: Check Existing PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      process_type:
+        description: 'Select process type'
+        required: true
+        default: 'check_balance'
+        type: choice
+        options:
+        - check_balance
+        - send_tokens
+
+jobs:
+  process-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install axios
+
+      - name: Process Existing PRs
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const axios = require('axios');
+            
+            async function checkBalance(btcAddress) {
+              const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
+              const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
+              return balanceInBTC >= 1;
+            }
+
+            // Get all open PRs
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            for (const pr of prs.data) {
+              console.log(`Processing PR #${pr.number} - ${pr.title}`);
+              
+              const files = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+
+              for (const file of files.data) {
+                if (file.filename.startsWith('validators/')) {
+                  const response = await github.rest.repos.getContent({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    path: file.filename,
+                    ref: pr.head.sha
+                  });
+
+                  const content = Buffer.from(response.data.content, 'base64').toString();
+                  const validatorData = JSON.parse(content);
+
+                  if (context.payload.inputs.process_type === 'check_balance') {
+                    // Check BTC balance
+                    const hasEnoughBalance = await checkBalance(validatorData.btc_address);
+                    
+                    // Add comment to PR
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: hasEnoughBalance 
+                        ? `✅ BTC address ${validatorData.btc_address} has sufficient balance`
+                        : `❌ BTC address ${validatorData.btc_address} has insufficient balance (less than 1 BTC)`
+                    });
+
+                    // Add labels
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      labels: [hasEnoughBalance ? 'balance-ok' : 'balance-insufficient']
+                    });
+                  }
+                }
+              }
+            }
+
+      - name: Setup Go and Send Tokens
+        if: github.event.inputs.process_type == 'send_tokens'
+        env:
+          FIAMMA_BINARY: fiammad
+          CHAIN_ID: fiamma-testnet
+          NODE_URL: https://rpc-testnet.fiamma.network:26657
+          FAUCET_MNEMONIC: ${{ secrets.FAUCET_MNEMONIC }}
+        run: |
+          # Setup Go environment
+          go install github.com/fiamma/fiamma@latest
+          
+          # Restore wallet from mnemonic
+          echo "$FAUCET_MNEMONIC" | $FIAMMA_BINARY keys add faucet --recover --keyring-backend test
+
+          # Process all validator files
+          for file in validators/*.json; do
+            if [ -f "$file" ]; then
+              FIAMMA_ADDRESS=$(jq -r .fiamma_address "$file")
+              
+              # Send tokens
+              $FIAMMA_BINARY tx bank send \
+                faucet \
+                $FIAMMA_ADDRESS \
+                1000000ufiamma \
+                --chain-id $CHAIN_ID \
+                --node $NODE_URL \
+                --keyring-backend test \
+                --yes
+              
+              echo "Tokens sent to $FIAMMA_ADDRESS"
+            fi
+          done 
