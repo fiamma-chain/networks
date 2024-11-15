@@ -3,7 +3,8 @@ name: Check BTC Signet Balance
 on:
   pull_request:
     paths:
-      - 'validators/*.json'  # More specific path pattern
+      - 'validators/*.json'
+      - '.github/workflows/**'   # More specific path pattern
 
 jobs:
   check-balance:
