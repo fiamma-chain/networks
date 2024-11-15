@@ -68,7 +68,7 @@ jobs:
               let validatorFileFound = false;
 
               for (const file of files.data) {
-                if (file.filename.startsWith('validators/')) {
+                if (file.filename.startsWith('bitvm2-staker-validators/')) {
                   validatorFileFound = true;
                   console.log(`Found validator file: ${file.filename}`);
                   
