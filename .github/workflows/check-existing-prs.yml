@@ -74,7 +74,7 @@ jobs:
 
                 // Filter for validator JSON files
                 const validatorFiles = files.filter(file => 
-                  file.filename.includes('bitvm2-staker-validators') && 
+                  file.filename.includes('fiamma-testnet-1/bitvm2-staker-validators') && 
                   file.filename.endsWith('.json')
                 );
 
@@ -101,13 +101,13 @@ jobs:
                       continue;
                     }
 
-                    if (!validatorData.btc_address) {
+                    if (!validatorData.btcAddress) {
                       console.log(`No BTC address found in ${file.filename}`);
                       continue;
                     }
 
-                    console.log(`Checking BTC address: ${validatorData.btc_address}`);
-                    const result = await checkBalance(validatorData.btc_address);
+                    console.log(`Checking BTC address: ${validatorData.btcAddress}`);
+                    const result = await checkBalance(validatorData.btcAddress);
                     
                     // Add comment to PR with results
                     await github.rest.issues.createComment({
@@ -115,7 +115,7 @@ jobs:
                       repo: context.repo.repo,
                       issue_number: pr.number,
                       body: `### BTC Balance Check Results for ${file.filename}\n\n` +
-                            `- BTC Address: \`${validatorData.btc_address}\`\n` +
+                            `- BTC Address: \`${validatorData.btcAddress}\`\n` +
                             `- Current Balance: ${result.balance} BTC\n` +
                             `- Required Balance: 1 BTC\n` +
                             `- Status: ${result.hasEnough ? '✅ PASSED' : '❌ FAILED'}`
