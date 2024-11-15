@@ -52,7 +52,7 @@ jobs:
             // Debug: Print current working directory and list files
             console.log('Current working directory:', process.cwd());
             console.log('Directory contents:', fs.readdirSync('.'));
-            console.log('Validators directory contents:', fs.readdirSync('../../fiamma-testnet-1/bitvm2-staker-validators'));
+            console.log('Validators directory contents:', fs.readdirSync('fiamma-testnet-1/bitvm2-staker-validators'));
 
             // Get changed files in PR
             const { data: files } = await github.rest.pulls.listFiles({
