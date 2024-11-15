@@ -1,22 +1,18 @@
-name: Check Existing PRs
+name: Check BTC Signet Balance
 
 on:
-  workflow_dispatch:
-    inputs:
-      process_type:
-        description: 'Select process type'
-        required: true
-        default: 'check_balance'
-        type: choice
-        options:
-        - check_balance
-        - send_tokens
+  pull_request:
+    paths:
+      - 'validators/*.json'  # More specific path pattern
 
 jobs:
-  process-prs:
+  check-balance:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Get full git history to properly check files
+
       - uses: actions/setup-node@v3
         with:
           node-version: '16'
@@ -24,137 +20,90 @@ jobs:
       - name: Install dependencies
         run: npm install axios
 
-      - name: Process Existing PRs
+      - name: Check BTC Balance
         uses: actions/github-script@v6
         with:
           script: |
+            const fs = require('fs');
             const axios = require('axios');
+            const path = require('path');
             
             async function checkBalance(btcAddress) {
               try {
-                console.log(`\n⏳ Checking balance for BTC address: ${btcAddress}`);
+                console.log(`Checking balance for BTC address: ${btcAddress}`);
                 const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
                 const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
-                console.log(`Balance found: ${balanceInBTC} BTC`);
-                return {
-                  balance: balanceInBTC,
-                  hasEnough: balanceInBTC >= 1
-                };
+                console.log(`Current balance: ${balanceInBTC} BTC`);
+                return balanceInBTC >= 1;
               } catch (error) {
-                console.error(`Error checking balance for ${btcAddress}: ${error.message}`);
+                console.error(`Error checking balance: ${error.message}`);
                 throw error;
               }
             }
 
-            console.log('\n🔍 Starting PR processing...');
-            
-            const prs = await github.rest.pulls.list({
+            // Debug: Print current working directory and list files
+            console.log('Current working directory:', process.cwd());
+            console.log('Directory contents:', fs.readdirSync('.'));
+            console.log('Validators directory contents:', fs.readdirSync('../../fiamma-testnet-1/bitvm2-staker-validators'));
+
+            // Get changed files in PR
+            const { data: files } = await github.rest.pulls.listFiles({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              state: 'open'
+              pull_number: context.issue.number
             });
 
-            console.log(`Found ${prs.data.length} open PRs`);
+            console.log('Changed files in PR:', files.map(f => f.filename));
 
-            for (const pr of prs.data) {
-              console.log(`\n📝 Processing PR #${pr.number} - ${pr.title}`);
+            let validatorFiles = files.filter(file => 
+              file.filename.startsWith('../../fiamma-testnet-1/bitvm2-staker-validators/') && 
+              file.filename.endsWith('.json')
+            );
+
+            console.log(`Found ${validatorFiles.length} validator files to process`);
+
+            for (const file of validatorFiles) {
+              console.log(`\nProcessing file: ${file.filename}`);
               
-              const files = await github.rest.pulls.listFiles({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number
-              });
+              try {
+                // Get file content from PR
+                const { data: fileData } = await github.rest.repos.getContent({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  path: file.filename,
+                  ref: context.payload.pull_request.head.sha
+                });
 
-              let validatorFileFound = false;
+                const content = Buffer.from(fileData.content, 'base64').toString();
+                console.log('File content:', content);
 
-              for (const file of files.data) {
-                if (file.filename.startsWith('bitvm2-staker-validators/')) {
-                  validatorFileFound = true;
-                  console.log(`Found validator file: ${file.filename}`);
-                  
-                  try {
-                    const response = await github.rest.repos.getContent({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      path: file.filename,
-                      ref: pr.head.sha
-                    });
-
-                    const content = Buffer.from(response.data.content, 'base64').toString();
-                    const validatorData = JSON.parse(content);
-                    console.log(`Validator BTC address: ${validatorData.btc_address}`);
-
-                    if (context.payload.inputs.process_type === 'check_balance') {
-                      const result = await checkBalance(validatorData.btc_address);
-                      
-                      const commentBody = `### BTC Balance Check Results\n\n` +
-                        `- BTC Address: \`${validatorData.btc_address}\`\n` +
-                        `- Current Balance: ${result.balance} BTC\n` +
-                        `- Required Balance: 1 BTC\n` +
-                        `- Status: ${result.hasEnough ? '✅ PASSED' : '❌ FAILED'}\n\n` +
-                        `${result.hasEnough ? 
-                          '✅ Balance requirement met!' : 
-                          '❌ Insufficient balance. Please ensure at least 1 BTC on Signet.'}`;
-
-                      console.log(`Adding comment to PR #${pr.number}`);
-                      await github.rest.issues.createComment({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        issue_number: pr.number,
-                        body: commentBody
-                      });
-
-                      const label = result.hasEnough ? 'balance-ok' : 'balance-insufficient';
-                      console.log(`Adding label '${label}' to PR #${pr.number}`);
-                      await github.rest.issues.addLabels({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        issue_number: pr.number,
-                        labels: [label]
-                      });
-                    }
-                  } catch (error) {
-                    console.error(`Error processing file ${file.filename}: ${error.message}`);
-                  }
+                let validatorData;
+                try {
+                  validatorData = JSON.parse(content);
+                } catch (error) {
+                  console.error('Failed to parse JSON:', error);
+                  core.setFailed(`Invalid JSON in ${file.filename}`);
+                  continue;
                 }
-              }
-              
-              if (!validatorFileFound) {
-                console.log(`No validator file found in PR #${pr.number}`);
-              }
-            }
-            
-            console.log('\n✅ Finished processing all PRs');
 
-      - name: Setup Go and Send Tokens
-        if: github.event.inputs.process_type == 'send_tokens'
-        env:
-          FIAMMA_BINARY: fiammad
-          CHAIN_ID: fiamma-testnet
-          NODE_URL: https://rpc-testnet.fiamma.network:26657
-          FAUCET_MNEMONIC: ${{ secrets.FAUCET_MNEMONIC }}
-        run: |
-          # Setup Go environment
-          go install github.com/fiamma/fiamma@latest
-          
-          # Restore wallet from mnemonic
-          echo "$FAUCET_MNEMONIC" | $FIAMMA_BINARY keys add faucet --recover --keyring-backend test
+                if (!validatorData.btc_address) {
+                  console.error('No BTC address found in validator data');
+                  core.setFailed(`No BTC address found in ${file.filename}`);
+                  continue;
+                }
 
-          # Process all validator files
-          for file in validators/*.json; do
-            if [ -f "$file" ]; then
-              FIAMMA_ADDRESS=$(jq -r .fiamma_address "$file")
-              
-              # Send tokens
-              $FIAMMA_BINARY tx bank send \
-                faucet \
-                $FIAMMA_ADDRESS \
-                1000000ufiamma \
-                --chain-id $CHAIN_ID \
-                --node $NODE_URL \
-                --keyring-backend test \
-                --yes
-              
-              echo "Tokens sent to $FIAMMA_ADDRESS"
-            fi
-          done 
+                console.log(`Checking BTC address: ${validatorData.btc_address}`);
+                const hasEnoughBalance = await checkBalance(validatorData.btc_address);
+                
+                if (!hasEnoughBalance) {
+                  core.setFailed(`BTC address ${validatorData.btc_address} does not have minimum required balance of 1 BTC on Signet`);
+                  continue;
+                }
+                
+                console.log('✅ Balance check passed');
+
+              } catch (error) {
+                console.error(`Error processing ${file.filename}:`, error);
+                core.setFailed(`Failed to process ${file.filename}: ${error.message}`);
+              }
+            } 
