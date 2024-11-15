@@ -14,6 +14,11 @@ on:
 jobs:
   check-balance:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
     steps:
       - uses: actions/checkout@v3
       
@@ -27,6 +32,7 @@ jobs:
       - name: Check Validators in PRs
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const axios = require('axios');
             
@@ -46,7 +52,6 @@ jobs:
               }
             }
 
-            // Get all open PRs
             console.log('Fetching open PRs...');
             const { data: prs } = await github.rest.pulls.list({
               owner: context.repo.owner,
@@ -59,79 +64,77 @@ jobs:
             for (const pr of prs) {
               console.log(`\nProcessing PR #${pr.number}: ${pr.title}`);
               
-              // Get files in this PR
-              const { data: files } = await github.rest.pulls.listFiles({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number
-              });
+              try {
+                // Get files in this PR
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number
+                });
 
-              // Filter for validator JSON files
-              const validatorFiles = files.filter(file => 
-                file.filename.includes('fiamma-testnet-1/bitvm2-staker-validators/') && 
-                file.filename.endsWith('.json')
-              );
+                // Filter for validator JSON files
+                const validatorFiles = files.filter(file => 
+                  file.filename.includes('bitvm2-staker-validators') && 
+                  file.filename.endsWith('.json')
+                );
 
-              if (validatorFiles.length === 0) {
-                console.log(`No validator JSON files found in PR #${pr.number}`);
-                continue;
-              }
-
-              console.log(`Found ${validatorFiles.length} validator files in PR #${pr.number}`);
-
-              for (const file of validatorFiles) {
-                console.log(`\nProcessing file: ${file.filename}`);
-                
-                try {
-                  // Get file content from PR
-                  const { data: fileData } = await github.rest.repos.getContent({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    path: file.filename,
-                    ref: pr.head.sha  // Use PR's HEAD commit
-                  });
-
-                  const content = Buffer.from(fileData.content, 'base64').toString();
-
-                  let validatorData;
-                  try {
-                    validatorData = JSON.parse(content);
-                  } catch (error) {
-                    console.error(`Invalid JSON in ${file.filename}:`, error.message);
-                    continue;
-                  }
-
-                  if (!validatorData.btcAddress) {
-                    console.log(`No BTC address found in ${file.filename}`);
-                    continue;
-                  }
-
-                  console.log(`Checking BTC address: ${validatorData.btcAddress}`);
-                  const result = await checkBalance(validatorData.btcAddress);
-                  
-                  // Add comment to PR with results
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: pr.number,
-                    body: `### BTC Balance Check Results for ${file.filename}\n\n` +
-                          `- BTC Address: \`${validatorData.btcAddress}\`\n` +
-                          `- Current Balance: ${result.balance} BTC\n` +
-                          `- Required Balance: 1 BTC\n` +
-                          `- Status: ${result.hasEnough ? '✅ PASSED' : '❌ FAILED'}`
-                  });
-
-                  // Add label based on balance check
-                  const label = result.hasEnough ? 'balance-ok' : 'balance-insufficient';
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: pr.number,
-                    labels: [label]
-                  });
-
-                } catch (error) {
-                  console.error(`Error processing ${file.filename}:`, error.message);
+                if (validatorFiles.length === 0) {
+                  console.log(`No validator JSON files found in PR #${pr.number}`);
+                  continue;
                 }
+
+                console.log(`Found ${validatorFiles.length} validator files in PR #${pr.number}`);
+
+                for (const file of validatorFiles) {
+                  console.log(`\nProcessing file: ${file.filename}`);
+                  
+                  try {
+                    // Get raw content directly from the PR
+                    const response = await axios.get(file.raw_url);
+                    const content = response.data;
+                    
+                    let validatorData;
+                    try {
+                      validatorData = typeof content === 'string' ? JSON.parse(content) : content;
+                    } catch (error) {
+                      console.error(`Invalid JSON in ${file.filename}:`, error.message);
+                      continue;
+                    }
+
+                    if (!validatorData.btc_address) {
+                      console.log(`No BTC address found in ${file.filename}`);
+                      continue;
+                    }
+
+                    console.log(`Checking BTC address: ${validatorData.btc_address}`);
+                    const result = await checkBalance(validatorData.btc_address);
+                    
+                    // Add comment to PR with results
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: `### BTC Balance Check Results for ${file.filename}\n\n` +
+                            `- BTC Address: \`${validatorData.btc_address}\`\n` +
+                            `- Current Balance: ${result.balance} BTC\n` +
+                            `- Required Balance: 1 BTC\n` +
+                            `- Status: ${result.hasEnough ? '✅ PASSED' : '❌ FAILED'}`
+                    });
+
+                    // Add label based on balance check
+                    const label = result.hasEnough ? 'balance-ok' : 'balance-insufficient';
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      labels: [label]
+                    });
+
+                  } catch (error) {
+                    console.error(`Error processing ${file.filename}:`, error);
+                  }
+                }
+              } catch (error) {
+                console.error(`Error processing PR #${pr.number}:`, error);
               }
             }
