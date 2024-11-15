@@ -31,11 +31,21 @@ jobs:
             const axios = require('axios');
             
             async function checkBalance(btcAddress) {
-              const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
-              const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
-              return balanceInBTC >= 1;
+              console.log(`\n🔍 Checking balance for BTC address: ${btcAddress}`);
+              try {
+                const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
+                const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
+                console.log(`💰 Current balance: ${balanceInBTC} BTC`);
+                console.log(`✨ Required balance: 1 BTC`);
+                return balanceInBTC >= 1;
+              } catch (error) {
+                console.error(`❌ Error checking balance: ${error.message}`);
+                throw error;
+              }
             }
 
+            console.log('🚀 Starting to process PRs...');
+            
             // Get all open PRs
             const prs = await github.rest.pulls.list({
               owner: context.repo.owner,
@@ -43,8 +53,10 @@ jobs:
               state: 'open'
             });
 
+            console.log(`📋 Found ${prs.data.length} open PRs to process`);
+
             for (const pr of prs.data) {
-              console.log(`Processing PR #${pr.number} - ${pr.title}`);
+              console.log(`\n📌 Processing PR #${pr.number} - ${pr.title}`);
               
               const files = await github.rest.pulls.listFiles({
                 owner: context.repo.owner,
@@ -52,8 +64,12 @@ jobs:
                 pull_number: pr.number
               });
 
+              console.log(`📁 Found ${files.data.length} files in PR #${pr.number}`);
+
               for (const file of files.data) {
                 if (file.filename.startsWith('validators/')) {
+                  console.log(`\n📄 Processing validator file: ${file.filename}`);
+                  
                   const response = await github.rest.repos.getContent({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
@@ -63,32 +79,56 @@ jobs:
 
                   const content = Buffer.from(response.data.content, 'base64').toString();
                   const validatorData = JSON.parse(content);
+                  console.log(`🔑 Found BTC address: ${validatorData.btc_address}`);
 
                   if (context.payload.inputs.process_type === 'check_balance') {
                     // Check BTC balance
-                    const hasEnoughBalance = await checkBalance(validatorData.btc_address);
-                    
-                    // Add comment to PR
-                    await github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: pr.number,
-                      body: hasEnoughBalance 
-                        ? `✅ BTC address ${validatorData.btc_address} has sufficient balance`
-                        : `❌ BTC address ${validatorData.btc_address} has insufficient balance (less than 1 BTC)`
-                    });
+                    try {
+                      const hasEnoughBalance = await checkBalance(validatorData.btc_address);
+                      const statusEmoji = hasEnoughBalance ? '✅' : '❌';
+                      const statusText = hasEnoughBalance ? 'PASSED' : 'FAILED';
+                      console.log(`${statusEmoji} Balance check ${statusText} for PR #${pr.number}`);
+                      
+                      // Add comment to PR
+                      const comment = await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: hasEnoughBalance 
+                          ? `✅ BTC address \`${validatorData.btc_address}\` has sufficient balance\n\n` +
+                            `- Current balance: ${balanceInBTC} BTC\n` +
+                            `- Required balance: 1 BTC\n` +
+                            `- Status: PASSED ✅`
+                          : `❌ BTC address \`${validatorData.btc_address}\` has insufficient balance\n\n` +
+                            `- Current balance: ${balanceInBTC} BTC\n` +
+                            `- Required balance: 1 BTC\n` +
+                            `- Status: FAILED ❌`
+                      });
+                      console.log(`💬 Added comment to PR #${pr.number}`);
 
-                    // Add labels
-                    await github.rest.issues.addLabels({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: pr.number,
-                      labels: [hasEnoughBalance ? 'balance-ok' : 'balance-insufficient']
-                    });
+                      // Add labels
+                      const label = hasEnoughBalance ? 'balance-ok' : 'balance-insufficient';
+                      await github.rest.issues.addLabels({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        labels: [label]
+                      });
+                      console.log(`🏷️ Added label '${label}' to PR #${pr.number}`);
+                    } catch (error) {
+                      console.error(`❌ Error processing PR #${pr.number}: ${error.message}`);
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: `❌ Error checking BTC balance: ${error.message}`
+                      });
+                    }
                   }
                 }
               }
             }
+            console.log('\n✨ Finished processing all PRs');
 
       - name: Setup Go and Send Tokens
         if: github.event.inputs.process_type == 'send_tokens'
