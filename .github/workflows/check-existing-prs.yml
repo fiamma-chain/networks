@@ -109,14 +109,33 @@ jobs:
               }
             }
 
-            console.log('Fetching open PRs...');
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open'
-            });
+            // Get all open PRs with pagination
+            async function getAllPRs() {
+              let page = 1;
+              let allPRs = [];
+              
+              while (true) {
+                console.log(`Fetching PRs page ${page}...`);
+                const { data: prs } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  per_page: 100,  // Maximum allowed per page
+                  page: page
+                });
+                
+                if (prs.length === 0) break;
+                
+                allPRs = allPRs.concat(prs);
+                page++;
+              }
+              
+              return allPRs;
+            }
 
-            console.log(`Found ${prs.length} open PRs`);
+            console.log('Fetching all open PRs...');
+            const prs = await getAllPRs();
+            console.log(`Found total ${prs.length} open PRs`);
 
             for (const pr of prs) {
               console.log(`\nProcessing PR #${pr.number}: ${pr.title}`);
