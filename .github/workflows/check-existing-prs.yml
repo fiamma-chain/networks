@@ -1,10 +1,17 @@
-name: Check BTC Signet Balance
+
+name: Check Signet BTC Balance
 
 on:
-  pull_request:
-    paths:
-      - 'validators/*.json'
-      - '.github/workflows/**'   # More specific path pattern
+  workflow_dispatch:
+    inputs:
+      process_type:
+        description: 'Select process type'
+        required: true
+        default: 'check_balance'
+        type: choice
+        options:
+        - check_balance
+
 
 jobs:
   check-balance:
@@ -62,6 +69,7 @@ jobs:
             );
 
             console.log(`Found ${validatorFiles.length} validator files to process`);
+
 
             for (const file of validatorFiles) {
               console.log(`\nProcessing file: ${file.filename}`);
