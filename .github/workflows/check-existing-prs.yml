@@ -1,0 +1,239 @@
+name: Check Validators Balance
+
+on:
+  workflow_dispatch:
+    inputs:
+      process_type:
+        description: 'Select process type'
+        required: true
+        default: 'check_balance'
+        type: choice
+        options:
+        - check_balance
+
+jobs:
+  check-balance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install axios
+
+      - name: Check Validators in PRs
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const axios = require('axios');
+            
+            // Define labels with colors
+            const LABELS = {
+              'balance-ok': {
+                name: 'balance-ok',
+                color: '0e8a16', // green
+                description: 'BTC balance check passed'
+              },
+              'balance-insufficient': {
+                name: 'balance-insufficient',
+                color: 'd93f0b', // red
+                description: 'BTC balance is below required amount'
+              },
+              'invalid-address': {
+                name: 'invalid-address',
+                color: 'fbca04', // yellow
+                description: 'Invalid BTC address or wrong network'
+              }
+            };
+
+            // Create or update labels
+            async function ensureLabel(label) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description
+                  });
+                }
+              }
+            }
+
+            // Ensure all labels exist
+            for (const label of Object.values(LABELS)) {
+              await ensureLabel(label);
+            }
+            
+            async function checkBalance(btcAddress) {
+              try {
+                // Check if address starts with 'bc1' (mainnet) or 'tb1' (testnet/signet)
+                const isMainnet = btcAddress.startsWith('bc1');
+                if (isMainnet) {
+                  throw new Error('Invalid network: Please use Signet address (tb1) instead of mainnet address (bc1)');
+                }
+
+                console.log(`Checking balance for BTC address: ${btcAddress}`);
+                const response = await axios.get(`https://mempool.space/signet/api/address/${btcAddress}`);
+                const balanceInBTC = response.data.chain_stats.funded_txo_sum / 100000000;
+                console.log(`Current balance: ${balanceInBTC} BTC`);
+                return {
+                  balance: balanceInBTC,
+                  hasEnough: balanceInBTC >= 1
+                };
+              } catch (error) {
+                if (error.message.includes('Invalid network')) {
+                  throw error;
+                }
+                if (error.response?.status === 400) {
+                  throw new Error('Invalid address or wrong network. Please use a valid Signet (tb1) address');
+                }
+                console.error(`Error checking balance: ${error.message}`);
+                throw error;
+              }
+            }
+
+            // Get all open PRs with pagination
+            async function getAllPRs() {
+              let page = 1;
+              let allPRs = [];
+              
+              while (true) {
+                console.log(`Fetching PRs page ${page}...`);
+                const { data: prs } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  per_page: 100,  // Maximum allowed per page
+                  page: page
+                });
+                
+                if (prs.length === 0) break;
+                
+                allPRs = allPRs.concat(prs);
+                page++;
+              }
+              
+              return allPRs;
+            }
+
+            console.log('Fetching all open PRs...');
+            const prs = await getAllPRs();
+            console.log(`Found total ${prs.length} open PRs`);
+
+            for (const pr of prs) {
+              console.log(`\nProcessing PR #${pr.number}: ${pr.title}`);
+              
+              try {
+                const { data: files } = await github.rest.pulls.listFiles({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number
+                });
+
+                const validatorFiles = files.filter(file => 
+                  file.filename.includes('fiamma-testnet-1/bitvm2-staker-validators') && 
+                  file.filename.endsWith('.json')
+                );
+
+                if (validatorFiles.length === 0) {
+                  console.log(`No validator JSON files found in PR #${pr.number}`);
+                  continue;
+                }
+
+                console.log(`Found ${validatorFiles.length} validator files in PR #${pr.number}`);
+
+                for (const file of validatorFiles) {
+                  console.log(`\nProcessing file: ${file.filename}`);
+                  
+                  try {
+                    const response = await axios.get(file.raw_url);
+                    const content = response.data;
+                    
+                    let validatorData;
+                    try {
+                      validatorData = typeof content === 'string' ? JSON.parse(content) : content;
+                    } catch (error) {
+                      const errorMessage = `❌ Invalid JSON format in ${file.filename}: ${error.message}`;
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: errorMessage
+                      });
+                      continue;
+                    }
+
+                    if (!validatorData.btcAddress) {
+                      const errorMessage = `❌ No BTC address found in ${file.filename}`;
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: errorMessage
+                      });
+                      continue;
+                    }
+
+                    console.log(`Checking BTC address: ${validatorData.btcAddress}`);
+                    try {
+                      const result = await checkBalance(validatorData.btcAddress);
+                      
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: `### BTC Balance Check Results for ${file.filename}\n\n` +
+                              `- BTC Address: \`${validatorData.btcAddress}\`\n` +
+                              `- Current Balance: ${result.balance} BTC\n` +
+                              `- Required Balance: 1 BTC\n` +
+                              `- Status: ${result.hasEnough ? '✅ PASSED' : '❌ FAILED'}`
+                      });
+
+                      const labelKey = result.hasEnough ? 'balance-ok' : 'balance-insufficient';
+                      await github.rest.issues.addLabels({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        labels: [LABELS[labelKey].name]
+                      });
+                    } catch (error) {
+                      if (error.message.includes('Invalid network') || error.message.includes('Invalid address')) {
+                        await github.rest.issues.addLabels({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: pr.number,
+                          labels: [LABELS['invalid-address'].name]
+                        });
+                      }
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pr.number,
+                        body: `❌ Error checking balance for ${file.filename}:\n${error.message}`
+                      });
+                    }
+                  } catch (error) {
+                    console.error(`Error processing ${file.filename}:`, error);
+                  }
+                }
+              } catch (error) {
+                console.error(`Error processing PR #${pr.number}:`, error);
+              }
+            }
